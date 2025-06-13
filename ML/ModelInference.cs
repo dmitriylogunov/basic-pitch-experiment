@@ -26,9 +26,9 @@ namespace BasicPitchExperimentApp.ML
         /// WHAT THIS FUNCTION DOES:
         /// - Takes the raw audio samples (numbers representing sound waves)
         /// - Organizes them into the format the AI model expects
-        /// - The model expects exactly 242,179 samples in shape [1, 242179]
-        /// - Audio longer than 242,179 samples is truncated
-        /// - Audio shorter than 242,179 samples is zero-padded
+        /// - The model expects exactly 43,844 samples in shape [1, 43844, 1]
+        /// - Audio longer than 43,844 samples is truncated
+        /// - Audio shorter than 43,844 samples is zero-padded
         /// - Returns a "tensor" (multi-dimensional array) that the AI can process
         /// 
         /// WHY WE NEED THIS:
@@ -38,34 +38,37 @@ namespace BasicPitchExperimentApp.ML
         /// 
         /// TENSOR CONCEPT:
         /// - A tensor is like a multi-dimensional spreadsheet
-        /// - Our tensor has shape [1, 242179]
+        /// - Our tensor has shape [1, 43844, 1]
         /// - 1 = batch size (processing one audio clip at a time)
-        /// - 242179 = exact number of samples the model expects
+        /// - 43844 = exact number of samples the model expects
+        /// - 1 = number of audio channels (mono)
         /// </summary>
         /// <param name="audioData">Raw audio samples</param>
         /// <returns>Tensor containing the preprocessed audio data</returns>
         public static DenseTensor<float> PreprocessAudio(float[] audioData)
         {
-            // The AI model expects exactly 242,179 audio samples per input frame
-            int samplesPerFrame = 242179;
+            // The AI model expects exactly 43,844 audio samples per input frame
+            // Based on the error message showing expected shape: -1x43844x1
+            int samplesPerFrame = 43844;
             
             Console.WriteLine($"Processing audio with {samplesPerFrame} samples per frame");
             
-            // Create tensor with shape [1, 242179] - single batch, exactly 242179 samples
-            var tensor = new DenseTensor<float>(new[] { 1, 1, samplesPerFrame });
+            // Create tensor with shape [1, 43844, 1] - batch size 1, 43844 samples, 1 channel
+            var tensor = new DenseTensor<float>(new[] { 1, samplesPerFrame, 1 });
             
-            // Fill the tensor with audio data - truncate or pad to exactly 242,179 samples
+            // Fill the tensor with audio data - truncate or pad to exactly 43,844 samples
             for (int i = 0; i < samplesPerFrame; i++)
             {
                 if (i < audioData.Length)
                 {
                     // Copy the audio sample directly
-                    tensor[0, i] = audioData[i];
+                    // For 3D tensor: [batch=0, sample=i, channel=0]
+                    tensor[0, i, 0] = audioData[i];
                 }
                 else
                 {
                     // If we run out of audio data, fill with silence (zero padding)
-                    tensor[0, i] = 0.0f;
+                    tensor[0, i, 0] = 0.0f;
                 }
             }
             
