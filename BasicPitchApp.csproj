@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ONNX Runtime for running the Basic Pitch model -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.16.3" />
+    
+    <!-- NAudio for audio file processing -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    
+    <!-- DryWetMIDI for MIDI file generation -->
+    <PackageReference Include="Melanchall.DryWetMidi" Version="7.1.0" />
+    
+    <!-- Math.NET Numerics for signal processing -->
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>
