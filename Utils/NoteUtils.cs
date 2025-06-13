@@ -1,4 +1,4 @@
-namespace BasicPitchApp.Utils
+namespace BasicPitchExperimentApp.Utils
 {
     /// <summary>
     /// Utility functions for musical note operations

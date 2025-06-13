@@ -1,11 +1,11 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using BasicPitchApp.Models;
+using BasicPitchExperimentApp.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace BasicPitchApp.ML
+namespace BasicPitchExperimentApp.ML
 {
     /// <summary>
     /// Handles ONNX model operations including preprocessing, inference, and post-processing

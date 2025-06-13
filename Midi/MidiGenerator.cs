@@ -1,13 +1,13 @@
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Common;
 using Melanchall.DryWetMidi.Interaction;
-using BasicPitchApp.Models;
+using BasicPitchExperimentApp.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace BasicPitchApp.Midi
+namespace BasicPitchExperimentApp.Midi
 {
     /// <summary>
     /// Handles MIDI file generation from detected notes

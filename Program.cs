@@ -5,7 +5,7 @@ using Microsoft.ML.OnnxRuntime;          // For running ONNX (machine learning) 
 using NAudio.MediaFoundation;            // For audio format conversion and resampling
 
 // Import our modular components
-using BasicPitchApp.Audio;
+using BasicPitchExperimentApp.Audio;
 using BasicPitchApp.ML;
 using BasicPitchApp.Midi;
 using BasicPitchApp.Models;

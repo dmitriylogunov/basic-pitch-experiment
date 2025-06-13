@@ -1,4 +1,4 @@
-namespace BasicPitchApp.Models
+namespace BasicPitchExperimentApp.Models
 {
     /// <summary>
     /// Represents a detected musical note with timing and pitch information

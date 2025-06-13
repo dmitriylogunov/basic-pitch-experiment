@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace BasicPitchApp.Audio
+namespace BasicPitchExperimentApp.Audio
 {
     /// <summary>
     /// Handles audio file loading, conversion, and normalization

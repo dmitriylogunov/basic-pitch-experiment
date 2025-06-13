@@ -1,11 +1,11 @@
-using BasicPitchApp.Models;
+using BasicPitchExperimentApp.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace BasicPitchApp.Utils
+namespace BasicPitchExperimentApp.Utils
 {
     /// <summary>
     /// Utility functions for file operations
