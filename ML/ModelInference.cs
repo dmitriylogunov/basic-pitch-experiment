@@ -26,7 +26,9 @@ namespace BasicPitchExperimentApp.ML
         /// WHAT THIS FUNCTION DOES:
         /// - Takes the raw audio samples (numbers representing sound waves)
         /// - Organizes them into the format the AI model expects
-        /// - The model wants chunks of exactly 43,844 samples each
+        /// - The model expects exactly 242,179 samples in shape [1, 242179]
+        /// - Audio longer than 242,179 samples is truncated
+        /// - Audio shorter than 242,179 samples is zero-padded
         /// - Returns a "tensor" (multi-dimensional array) that the AI can process
         /// 
         /// WHY WE NEED THIS:
@@ -36,48 +38,34 @@ namespace BasicPitchExperimentApp.ML
         /// 
         /// TENSOR CONCEPT:
         /// - A tensor is like a multi-dimensional spreadsheet
-        /// - Our tensor has shape [chunks, 43844, 1]
-        /// - chunks = how many pieces we split the audio into
-        /// - 43844 = samples per chunk (determined by the model's requirements)
-        /// - 1 = one channel (mono audio)
+        /// - Our tensor has shape [1, 242179]
+        /// - 1 = batch size (processing one audio clip at a time)
+        /// - 242179 = exact number of samples the model expects
         /// </summary>
         /// <param name="audioData">Raw audio samples</param>
         /// <returns>Tensor containing the preprocessed audio data</returns>
         public static DenseTensor<float> PreprocessAudio(float[] audioData)
         {
-            // The AI model expects exactly 43,844 audio samples per input chunk
-            // This number was determined when the model was trained
-            int expectedFeatures = 43844;
+            // The AI model expects exactly 242,179 audio samples per input frame
+            int samplesPerFrame = 242179;
             
-            // Calculate how many chunks we need to fit all our audio data
-            // If audio is longer than 43,844 samples, we'll need multiple chunks
-            int numChunks = (int)Math.Ceiling((double)audioData.Length / expectedFeatures);
+            Console.WriteLine($"Processing audio with {samplesPerFrame} samples per frame");
             
-            // Create a 3D tensor to hold our data
-            // Think of it as a box with dimensions: [chunks, samples_per_chunk, channels]
-            var tensor = new DenseTensor<float>(new[] { numChunks, expectedFeatures, 1 });
+            // Create tensor with shape [1, 242179] - single batch, exactly 242179 samples
+            var tensor = new DenseTensor<float>(new[] { 1, 1, samplesPerFrame });
             
-            // Fill the tensor with our audio data, chunk by chunk
-            for (int chunk = 0; chunk < numChunks; chunk++)
+            // Fill the tensor with audio data - truncate or pad to exactly 242,179 samples
+            for (int i = 0; i < samplesPerFrame; i++)
             {
-                // Calculate where to start reading from the original audio
-                int startIdx = chunk * expectedFeatures;
-                
-                // Fill this chunk with audio samples
-                for (int i = 0; i < expectedFeatures; i++)
+                if (i < audioData.Length)
                 {
-                    if (startIdx + i < audioData.Length)
-                    {
-                        // Copy the audio sample directly
-                        // Each sample represents the sound wave amplitude at that moment
-                        tensor[chunk, i, 0] = audioData[startIdx + i];
-                    }
-                    else
-                    {
-                        // If we run out of audio data, fill with silence (zero)
-                        // This is called "padding" - like adding blank pages to a book
-                        tensor[chunk, i, 0] = 0.0f;
-                    }
+                    // Copy the audio sample directly
+                    tensor[0, i] = audioData[i];
+                }
+                else
+                {
+                    // If we run out of audio data, fill with silence (zero padding)
+                    tensor[0, i] = 0.0f;
                 }
             }
             

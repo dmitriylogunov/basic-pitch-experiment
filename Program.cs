@@ -6,14 +6,14 @@ using NAudio.MediaFoundation;            // For audio format conversion and resa
 
 // Import our modular components
 using BasicPitchExperimentApp.Audio;
-using BasicPitchApp.ML;
-using BasicPitchApp.Midi;
-using BasicPitchApp.Models;
-using BasicPitchApp.Utils;
+using BasicPitchExperimentApp.ML;
+using BasicPitchExperimentApp.Midi;
+using BasicPitchExperimentApp.Models;
+using BasicPitchExperimentApp.Utils;
 
 using System;
 
-namespace BasicPitchApp
+namespace BasicPitchExperimentApp
 {
     /// <summary>
     /// Console application that uses Basic Pitch ONNX model to detect notes from audio
