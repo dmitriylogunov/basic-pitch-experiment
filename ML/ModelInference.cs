@@ -1,6 +1,7 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using BasicPitchExperimentApp.Models;
+using BasicPitchExperimentApp.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,12 +14,16 @@ namespace BasicPitchExperimentApp.ML
     public static class ModelInference
     {
         // Constants for Basic Pitch model configuration
-        private const int WINDOW_SIZE = 2048;
-        private const int HOP_LENGTH = 256;
+        private const int FFT_HOP = 256;
+        private const int AUDIO_SAMPLE_RATE = 22050;
+        private const int AUDIO_N_SAMPLES = 43844; // 2 seconds * 22050 - 256
+        private const int ANNOTATIONS_FPS = 86; // AUDIO_SAMPLE_RATE / FFT_HOP
         private const int N_BINS_PER_SEMITONE = 3;
         private const float MIN_NOTE_LENGTH = 0.127f;
         private const float ONSET_THRESHOLD = 0.5f;
         private const float FRAME_THRESHOLD = 0.3f;
+        private const int N_FREQ_BINS_NOTES = 88;
+        private const int N_FREQ_BINS_CONTOURS = 264;
 
         /// <summary>
         /// Preprocesses audio data to match the expected model input shape
@@ -47,27 +52,23 @@ namespace BasicPitchExperimentApp.ML
         /// <returns>Tensor containing the preprocessed audio data</returns>
         public static DenseTensor<float> PreprocessAudio(float[] audioData)
         {
-            // The AI model expects exactly 43,844 audio samples per input frame
-            // Based on the error message showing expected shape: -1x43844x1
-            int samplesPerFrame = 43844;
+            // Basic Pitch expects audio in windows of AUDIO_N_SAMPLES
+            // The model expects shape [1, 43844, 1] - batch, samples, channels
+            Console.WriteLine($"Processing audio with {AUDIO_N_SAMPLES} samples per frame");
+            Console.WriteLine($"Input audio length: {audioData.Length} samples ({audioData.Length / (float)AUDIO_SAMPLE_RATE:F2} seconds)");
             
-            Console.WriteLine($"Processing audio with {samplesPerFrame} samples per frame");
+            // Create tensor with shape [1, 43844, 1]
+            var tensor = new DenseTensor<float>(new[] { 1, AUDIO_N_SAMPLES, 1 });
             
-            // Create tensor with shape [1, 43844, 1] - batch size 1, 43844 samples, 1 channel
-            var tensor = new DenseTensor<float>(new[] { 1, samplesPerFrame, 1 });
-            
-            // Fill the tensor with audio data - truncate or pad to exactly 43,844 samples
-            for (int i = 0; i < samplesPerFrame; i++)
+            // Fill the tensor with audio data
+            for (int i = 0; i < AUDIO_N_SAMPLES; i++)
             {
                 if (i < audioData.Length)
                 {
-                    // Copy the audio sample directly
-                    // For 3D tensor: [batch=0, sample=i, channel=0]
                     tensor[0, i, 0] = audioData[i];
                 }
                 else
                 {
-                    // If we run out of audio data, fill with silence (zero padding)
                     tensor[0, i, 0] = 0.0f;
                 }
             }
@@ -98,9 +99,14 @@ namespace BasicPitchExperimentApp.ML
         /// <returns>Dictionary containing model outputs</returns>
         public static Dictionary<string, DenseTensor<float>> RunInference(InferenceSession session, DenseTensor<float> inputTensor)
         {
-            // Find out what the model calls its input
-            // Different models might call their input "audio", "input", "data", etc.
-            var inputName = session.InputMetadata.Keys.First();
+            // Basic Pitch ONNX model expects input named "serving_default_input_2:0"
+            var inputName = "serving_default_input_2:0";
+            if (!session.InputMetadata.ContainsKey(inputName))
+            {
+                // Fallback to first input name if specific name not found
+                inputName = session.InputMetadata.Keys.First();
+                Console.WriteLine($"Warning: Expected input name 'serving_default_input_2:0' not found, using '{inputName}'");
+            }
             var inputMetadata = session.InputMetadata[inputName];
             
             // Print debug information so we can see if everything matches up
@@ -115,28 +121,41 @@ namespace BasicPitchExperimentApp.ML
                 NamedOnnxValue.CreateFromTensor(inputName, inputTensor)
             };
             
-            // Ask the AI model to analyze our audio data
-            // This is where the magic happens - the model processes the audio
-            using var results = session.Run(inputs);
+            // Basic Pitch ONNX model has specific output names
+            var outputNames = new[] {
+                "StatefulPartitionedCall:1", // note
+                "StatefulPartitionedCall:2", // onset  
+                "StatefulPartitionedCall:0"  // contour
+            };
             
-            // Collect the model's predictions
-            // The model might output multiple types of information
+            // Run inference with specific output names
+            using var results = session.Run(inputs, outputNames);
+            
+            // Map outputs to their semantic names
             var outputs = new Dictionary<string, DenseTensor<float>>();
+            var outputMapping = new Dictionary<string, string>
+            {
+                ["StatefulPartitionedCall:1"] = "note",
+                ["StatefulPartitionedCall:2"] = "onset",
+                ["StatefulPartitionedCall:0"] = "contour"
+            };
+            
             foreach (var result in results)
             {
-                // Make sure this output contains numerical predictions (floats)
                 if (result.Value is Tensor<float> tensor)
                 {
-                    // Store the predictions with their name for later use
-                    outputs[result.Name] = tensor.ToDenseTensor();
-                    Console.WriteLine($"Output '{result.Name}': {string.Join('x', tensor.Dimensions.ToArray())}");
+                    var semanticName = outputMapping.ContainsKey(result.Name) ? outputMapping[result.Name] : result.Name;
+                    outputs[semanticName] = tensor.ToDenseTensor();
+                    Console.WriteLine($"Output '{semanticName}' (tensor: {result.Name}): {string.Join('x', tensor.Dimensions.ToArray())}");
                     
-                    // DEBUG: Show some sample values from each output
+                    // DEBUG: Show value statistics
                     var denseTensor = tensor.ToDenseTensor();
-                    var maxVal = denseTensor.ToArray().Max();
-                    var minVal = denseTensor.ToArray().Min();
-                    var avgVal = denseTensor.ToArray().Average();
-                    Console.WriteLine($"  -> Value range: {minVal:F4} to {maxVal:F4}, average: {avgVal:F4}");
+                    var values = denseTensor.ToArray();
+                    var maxVal = values.Max();
+                    var minVal = values.Min();
+                    var avgVal = values.Average();
+                    var aboveThreshold = values.Count(v => v > FRAME_THRESHOLD);
+                    Console.WriteLine($"  -> Range: [{minVal:F4}, {maxVal:F4}], Mean: {avgVal:F4}, Values > {FRAME_THRESHOLD}: {aboveThreshold}/{values.Length}");
                 }
             }
             
@@ -172,78 +191,51 @@ namespace BasicPitchExperimentApp.ML
             // Create a list to store all the notes we find
             var notes = new List<DetectedNote>();
             
-            // Basic Pitch model typically provides several types of information:
-            // - note_activations: How confident it is that each note is playing
-            // - onset_activations: How confident it is that a note is starting  
-            // - contour_activations: Information about pitch bending/vibrato
-            // 
-            // Let's try to find the best output to use for note detection
-            // Look for outputs with 88 pitches (piano keys) or 264 pitches (with harmonics)
-            DenseTensor<float>? primaryOutput = null;
-            string outputName = "";
+            // Basic Pitch model outputs:
+            // - note: Note activations (shape: [frames, 88])
+            // - onset: Onset activations (shape: [frames, 88])  
+            // - contour: Pitch contour (shape: [frames, 264])
             
-            // Try to find the output with the most pitch information
-            foreach (var output in modelOutputs)
+            // Use the 'note' output for primary note detection
+            if (!modelOutputs.ContainsKey("note"))
             {
-                var tensor = output.Value;
-                Console.WriteLine($"Checking output '{output.Key}' with shape: {string.Join('x', tensor.Dimensions.ToArray())}");
-                
-                // Look for outputs that have pitch dimension (88 or 264)
-                if (tensor.Dimensions.Length >= 2)
-                {
-                    var lastDim = tensor.Dimensions[tensor.Dimensions.Length - 1];
-                    if (lastDim == 88 || lastDim == 264)
-                    {
-                        primaryOutput = tensor;
-                        outputName = output.Key;
-                        Console.WriteLine($"  -> Selected this output for note detection (has {lastDim} pitch classes)");
-                        break;
-                    }
-                }
+                Console.WriteLine("ERROR: 'note' output not found in model outputs!");
+                Console.WriteLine($"Available outputs: {string.Join(", ", modelOutputs.Keys)}");
+                return notes;
             }
             
-            // Fallback to first output if no suitable one found
-            if (primaryOutput == null)
+            var noteOutput = modelOutputs["note"];
+            var onsetOutput = modelOutputs.ContainsKey("onset") ? modelOutputs["onset"] : null;
+            
+            Console.WriteLine($"Using 'note' output with shape: {string.Join('x', noteOutput.Dimensions.ToArray())}");
+            if (onsetOutput != null)
             {
-                primaryOutput = modelOutputs.First().Value;
-                outputName = modelOutputs.First().Key;
-                Console.WriteLine($"  -> Using fallback output: {outputName}");
+                Console.WriteLine($"Also using 'onset' output with shape: {string.Join('x', onsetOutput.Dimensions.ToArray())}");
             }
             
-            Console.WriteLine($"Processing output tensor '{outputName}' with shape: {string.Join('x', primaryOutput.Dimensions.ToArray())}");
+            // Basic Pitch outputs are 2D: [frames, pitches]
+            // Note output: [frames, 88] - one value per piano key
+            // Onset output: [frames, 88] - onset detection per piano key
+            int numFrames = noteOutput.Dimensions[0];
+            int numPitches = noteOutput.Dimensions[1];
             
-            // Figure out the structure of the model's output
-            // The output is organized as [time_frames, pitch_classes, ...]
-            // time_frames = how many time slices the audio was divided into
-            // pitch_classes = how many different notes the model can detect
-            int numFrames, numPitches;
-            if (primaryOutput.Dimensions.Length == 3)
-            {
-                // 3D output: [frames, pitches, channels]
-                numFrames = primaryOutput.Dimensions[0];
-                numPitches = primaryOutput.Dimensions[1];
-            }
-            else if (primaryOutput.Dimensions.Length == 2)
-            {
-                // 2D output: [frames, pitches]
-                numFrames = primaryOutput.Dimensions[0];
-                numPitches = primaryOutput.Dimensions[1];
-            }
-            else
-            {
-                // Fallback for unexpected formats
-                numFrames = primaryOutput.Dimensions[0];
-                numPitches = Math.Min(264, primaryOutput.Dimensions.Length > 1 ? primaryOutput.Dimensions[1] : 1);
-            }
+            Console.WriteLine($"Processing {numFrames} time frames with {numPitches} pitch classes");
             
-            // Calculate how much real time each frame represents
-            // If we have 1000 frames and 10 seconds of audio, each frame = 0.01 seconds
-            float frameToTime = (float)audioLength / sampleRate / numFrames;
+            // Calculate timing: Basic Pitch uses fixed frame rate
+            // Each frame represents 1/ANNOTATIONS_FPS seconds
+            float frameToTime = 1.0f / ANNOTATIONS_FPS;
+            
+            // Calculate actual number of frames for the original audio
+            int expectedFrames = (int)Math.Floor(audioLength * (ANNOTATIONS_FPS / (float)sampleRate));
+            Console.WriteLine($"Frame timing: {frameToTime:F4} seconds per frame");
+            Console.WriteLine($"Expected frames for audio length: {expectedFrames}, actual frames: {numFrames}");
             
             // DEBUG: Track detection statistics
             int totalDetections = 0;
             float maxActivationSeen = 0.0f;
+            float minActivationSeen = float.MaxValue;
             int detectionsAboveThreshold = 0;
+            bool needsSigmoid = false;
             
             // Look for notes by examining each possible pitch
             // For each pitch (like C, C#, D, etc.), check if it's active over time
@@ -255,27 +247,40 @@ namespace BasicPitchExperimentApp.ML
                 // Look at every time frame for this specific pitch
                 for (int frame = 0; frame < numFrames; frame++)
                 {
-                    // Get the model's confidence that this pitch is active at this time
-                    float activation;
-                    if (primaryOutput.Dimensions.Length == 3)
+                    // Get note activation value (2D tensor: [frame, pitch])
+                    float rawActivation = noteOutput[frame, pitch];
+                    float activation = rawActivation;
+                    
+                    // Track if we see values outside [0,1] - indicates need for sigmoid
+                    if (rawActivation < 0 || rawActivation > 1)
                     {
-                        // For 3D output, get the main channel (index 0)
-                        activation = primaryOutput[frame, pitch, 0];
+                        needsSigmoid = true;
                     }
-                    else if (primaryOutput.Dimensions.Length == 2)
+                    
+                    // IMPORTANT: Check if activation needs sigmoid transformation
+                    // If values are outside [0,1] range, they likely need sigmoid
+                    if (rawActivation < -1 || rawActivation > 1)
                     {
-                        // For 2D output, get the value directly
-                        activation = primaryOutput[frame, pitch];
+                        // Apply sigmoid: 1 / (1 + e^(-x))
+                        activation = 1.0f / (1.0f + (float)Math.Exp(-rawActivation));
                     }
-                    else
+                    
+                    // Get onset activation if available
+                    float onsetActivation = 0.0f;
+                    if (onsetOutput != null && frame < onsetOutput.Dimensions[0] && pitch < onsetOutput.Dimensions[1])
                     {
-                        // Fallback for unexpected formats
-                        activation = 0.0f;
+                        onsetActivation = onsetOutput[frame, pitch];
+                        // Apply sigmoid if needed
+                        if (onsetActivation < 0 || onsetActivation > 1)
+                        {
+                            onsetActivation = 1.0f / (1.0f + (float)Math.Exp(-onsetActivation));
+                        }
                     }
                     
                     // DEBUG: Track activation statistics
                     totalDetections++;
                     if (activation > maxActivationSeen) maxActivationSeen = activation;
+                    if (activation < minActivationSeen) minActivationSeen = activation;
                     
                     // If the model is confident enough that this note is playing...
                     if (activation > FRAME_THRESHOLD)
@@ -324,15 +329,46 @@ namespace BasicPitchExperimentApp.ML
             }
             
             // DEBUG: Print detection statistics
-            Console.WriteLine($"DEBUG: Detection Statistics:");
+            Console.WriteLine($"\nDEBUG: Detection Statistics:");
             Console.WriteLine($"  Total predictions checked: {totalDetections}");
-            Console.WriteLine($"  Maximum activation value seen: {maxActivationSeen:F4}");
+            Console.WriteLine($"  Activation value range: [{minActivationSeen:F4}, {maxActivationSeen:F4}]");
+            Console.WriteLine($"  Values outside [0,1] range: {(needsSigmoid ? "YES - sigmoid applied" : "NO")}");
             Console.WriteLine($"  Current threshold: {FRAME_THRESHOLD}");
             Console.WriteLine($"  Detections above threshold: {detectionsAboveThreshold}");
             Console.WriteLine($"  Final notes after filtering: {notes.Count}");
             
-            // Arrange notes in chronological order (earliest first)
-            // This makes the output easier to read and understand
+            // Suggest adjustments if no notes detected
+            if (notes.Count == 0 && maxActivationSeen < FRAME_THRESHOLD)
+            {
+                Console.WriteLine($"\nSUGGESTION: Maximum activation ({maxActivationSeen:F4}) is below threshold ({FRAME_THRESHOLD})");
+                Console.WriteLine($"Try reducing threshold to {maxActivationSeen * 0.8f:F4}");
+            }
+            
+            // Print final statistics
+            if (notes.Count == 0)
+            {
+                Console.WriteLine("\nWARNING: No notes detected! Possible issues:");
+                Console.WriteLine("1. Activation values might need sigmoid transformation");
+                Console.WriteLine("2. Threshold values might be too high");
+                Console.WriteLine("3. Audio preprocessing might not match expected format");
+                Console.WriteLine($"\nTry reducing FRAME_THRESHOLD from {FRAME_THRESHOLD} to a lower value like 0.1");
+            }
+            else
+            {
+                Console.WriteLine($"\nSuccessfully detected {notes.Count} notes");
+                // Show first few notes for debugging
+                int showCount = Math.Min(5, notes.Count);
+                Console.WriteLine($"First {showCount} notes:");
+                for (int i = 0; i < showCount; i++)
+                {
+                    var note = notes[i];
+                    Console.WriteLine($"  - MIDI {note.MidiNote} ({NoteUtils.GetNoteName(note.MidiNote)}), " +
+                                    $"Time: {note.StartTime:F2}-{note.EndTime:F2}s, " +
+                                    $"Confidence: {note.Confidence:F3}");
+                }
+            }
+            
+            // Sort notes by start time
             notes.Sort((a, b) => a.StartTime.CompareTo(b.StartTime));
             
             return notes;
@@ -423,13 +459,10 @@ namespace BasicPitchExperimentApp.ML
         /// <returns>MIDI note number (0-127)</returns>
         private static int PitchIndexToMidiNote(int pitchIndex)
         {
-            // Basic Pitch model covers the 88 keys of a piano, starting from A0 (MIDI note 21)
-            // The model uses 3 detection bins per semitone for better accuracy
-            // So we divide by 3 to get the actual semitone number
-            int noteOffset = pitchIndex / N_BINS_PER_SEMITONE;
-            
-            // Add the offset to the starting note (A0 = 21) and make sure it's valid
-            return Math.Max(0, Math.Min(127, 21 + noteOffset)); // Keep within MIDI range (0-127)
+            // Basic Pitch 'note' output has 88 bins, one per piano key
+            // Starting from A0 (MIDI note 21) to C8 (MIDI note 108)
+            // No division needed - direct mapping
+            return Math.Max(0, Math.Min(127, 21 + pitchIndex));
         }
 
         /// <summary>

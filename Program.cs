@@ -39,6 +39,12 @@ namespace BasicPitchExperimentApp
         {
             Console.WriteLine("=== Basic Pitch ONNX Note Detection ===");
             Console.WriteLine("Loading model and processing audio...\n");
+            
+            // Check for command line arguments
+            if (args.Length > 0 && args[0] == "--debug")
+            {
+                Console.WriteLine("DEBUG MODE: Using lower thresholds for testing");
+            }
 
             // Initialize MediaFoundation for audio processing
             // This is required by NAudio to handle different audio formats
