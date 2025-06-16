@@ -33,25 +33,27 @@ namespace BasicPitchExperimentApp.Midi
         /// </summary>
         /// <param name="notes">List of detected notes</param>
         /// <param name="outputPath">Path for the output MIDI file</param>
-        public static void GenerateMidiFile(List<DetectedNote> notes, string outputPath)
+        public static void GenerateMidiFile(List<DetectedNote> notes, string outputPath, int bpm = 120)
         {
             // Create a new MIDI file structure
             var midiFile = new MidiFile();  // The complete MIDI file
             var track = new TrackChunk();   // One track to hold all our notes
             
             // Set the tempo (speed) of the music
-            // 120 BPM = 120 quarter notes per minute = 0.5 seconds per quarter note
-            // 500,000 microseconds = 0.5 seconds
-            track.Events.Add(new SetTempoEvent(500000));
+            // Convert BPM to microseconds per quarter note
+            // Formula: 60,000,000 / BPM = microseconds per quarter note
+            int microsecondsPerQuarterNote = 60_000_000 / bpm;
+            track.Events.Add(new SetTempoEvent(microsecondsPerQuarterNote));
             
             // Convert each detected note into MIDI events
             foreach (var note in notes)
             {
                 // Convert time from seconds to MIDI ticks
                 // 480 ticks per quarter note is a common standard
-                // At 120 BPM, we have 2 quarter notes per second, so multiply by 2
-                long startTicks = (long)(note.StartTime * 480 * 2);
-                long endTicks = (long)(note.EndTime * 480 * 2);
+                // Calculate quarter notes per second based on actual BPM
+                double quarterNotesPerSecond = bpm / 60.0;
+                long startTicks = (long)(note.StartTime * 480 * quarterNotesPerSecond);
+                long endTicks = (long)(note.EndTime * 480 * quarterNotesPerSecond);
                 
                 // Create a "Note On" event (start playing the note)
                 var noteOn = new NoteOnEvent(

@@ -1,0 +1,138 @@
+<Window x:Class="BasicPitchExperimentApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Basic Pitch Audio to MIDI Converter" Height="650" Width="900">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- File Selection -->
+        <GroupBox Grid.Row="0" Header="Audio File" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="FilePathTextBox" Grid.Column="0" IsReadOnly="True" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse..." Width="80" Click="BrowseButton_Click" Margin="0,0,5,0"/>
+                <Button x:Name="ProcessButton" Grid.Column="2" Content="Process Audio" Width="100" Click="ProcessButton_Click" IsEnabled="False"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- MIDI Parameters -->
+        <GroupBox Grid.Row="1" Header="MIDI Parameters" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+                
+                <Label Grid.Column="0" Content="BPM:" VerticalAlignment="Center"/>
+                <TextBox x:Name="BpmTextBox" Grid.Column="1" Text="120" VerticalAlignment="Center" Margin="5,0"/>
+                
+                <Label Grid.Column="2" Content="Length Match:" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <ComboBox x:Name="LengthMatchCombo" Grid.Column="3" VerticalAlignment="Center" Margin="5,0" SelectedIndex="0">
+                    <ComboBoxItem>Original</ComboBoxItem>
+                    <ComboBoxItem>Custom (sec)</ComboBoxItem>
+                    <ComboBoxItem>Stretch to BPM</ComboBoxItem>
+                </ComboBox>
+                
+                <Label Grid.Column="4" Content="Duration (sec):" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <TextBox x:Name="DurationTextBox" Grid.Column="5" Text="0" VerticalAlignment="Center" Margin="5,0" IsEnabled="False"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Model Parameters -->
+        <GroupBox Grid.Row="2" Header="Model Parameters" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="60"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Note Threshold -->
+                <Label Grid.Row="0" Grid.Column="0" Content="Note Threshold:"/>
+                <Slider x:Name="NoteThresholdSlider" Grid.Row="0" Grid.Column="1" 
+                        Minimum="0.1" Maximum="0.9" Value="0.5" 
+                        TickFrequency="0.1" IsSnapToTickEnabled="True" 
+                        Margin="5,5,5,0"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" 
+                           Text="{Binding ElementName=NoteThresholdSlider, Path=Value, StringFormat='{}{0:F1}'}" 
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                <!-- Onset Threshold -->
+                <Label Grid.Row="1" Grid.Column="0" Content="Onset Threshold:"/>
+                <Slider x:Name="OnsetThresholdSlider" Grid.Row="1" Grid.Column="1" 
+                        Minimum="0.1" Maximum="0.9" Value="0.5" 
+                        TickFrequency="0.1" IsSnapToTickEnabled="True" 
+                        Margin="5,5,5,0"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" 
+                           Text="{Binding ElementName=OnsetThresholdSlider, Path=Value, StringFormat='{}{0:F1}'}" 
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                <!-- Minimum Note Duration -->
+                <Label Grid.Row="2" Grid.Column="0" Content="Min Note Duration (ms):"/>
+                <Slider x:Name="MinNoteDurationSlider" Grid.Row="2" Grid.Column="1" 
+                        Minimum="10" Maximum="500" Value="127" 
+                        TickFrequency="10" IsSnapToTickEnabled="True" 
+                        Margin="5,5,5,0"/>
+                <TextBlock Grid.Row="2" Grid.Column="2" 
+                           Text="{Binding ElementName=MinNoteDurationSlider, Path=Value, StringFormat='{}{0:F0}'}" 
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Output Controls -->
+        <GroupBox Grid.Row="3" Header="Output" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button x:Name="RegenerateButton" Grid.Column="0" Content="Regenerate MIDI" Width="120" 
+                        Click="RegenerateButton_Click" IsEnabled="False" Margin="0,0,5,0"/>
+                <Button x:Name="PlayButton" Grid.Column="1" Content="Play MIDI" Width="80" 
+                        Click="PlayButton_Click" IsEnabled="False" Margin="0,0,5,0"/>
+                <Button x:Name="StopButton" Grid.Column="2" Content="Stop" Width="60" 
+                        Click="StopButton_Click" IsEnabled="False" Margin="0,0,5,0"/>
+                <Button x:Name="SaveMidiButton" Grid.Column="3" Content="Save MIDI As..." Width="100" 
+                        Click="SaveMidiButton_Click" IsEnabled="False" HorizontalAlignment="Right"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Log/Output -->
+        <GroupBox Grid.Row="5" Header="Processing Log" Margin="0,0,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="LogTextBox" IsReadOnly="True" TextWrapping="Wrap" 
+                         Background="#F5F5F5" FontFamily="Consolas" FontSize="11"/>
+            </ScrollViewer>
+        </GroupBox>
+
+        <!-- Progress Bar -->
+        <ProgressBar x:Name="ProcessingProgressBar" Grid.Row="6" Height="20" Visibility="Collapsed"/>
+    </Grid>
+</Window>

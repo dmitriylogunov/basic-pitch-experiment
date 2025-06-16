@@ -558,7 +558,6 @@ namespace BasicPitchExperimentApp.ML
                 if (windowOutputs.Count == 0) continue;
                 
                 // Determine dimensions from first window
-                int framesPerWindow = 172; // This should match the actual output
                 int numFeatures = outputName == "contour" ? N_FREQ_BINS_CONTOURS : N_FREQ_BINS_NOTES;
                 
                 // Calculate total frames after removing overlaps
