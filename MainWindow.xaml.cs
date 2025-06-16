@@ -15,6 +15,7 @@ using BasicPitchExperimentApp.ML;
 using BasicPitchExperimentApp.Midi;
 using BasicPitchExperimentApp.Models;
 using BasicPitchExperimentApp.Utils;
+using BasicPitchExperimentApp.UI;
 
 namespace BasicPitchExperimentApp
 {
@@ -27,6 +28,7 @@ namespace BasicPitchExperimentApp
         private List<DetectedNote>? detectedNotes;
         private IWavePlayer? wavePlayer;
         private string? currentMidiFile = "output.mid";
+        private MusicNotationRenderer? notationRenderer;
 
         public MainWindow()
         {
@@ -35,6 +37,7 @@ namespace BasicPitchExperimentApp
             LoadModel();
             
             LengthMatchCombo.SelectionChanged += LengthMatchCombo_SelectionChanged;
+            notationRenderer = new MusicNotationRenderer(NotationCanvas);
         }
 
         private async void LoadModel()
@@ -144,6 +147,12 @@ namespace BasicPitchExperimentApp
 
                 // Generate MIDI with current settings
                 await GenerateMidiWithCurrentSettings();
+                
+                // Update notation display
+                Dispatcher.Invoke(() =>
+                {
+                    notationRenderer?.RenderNotes(detectedNotes);
+                });
                 
                 RegenerateButton.IsEnabled = true;
                 PlayButton.IsEnabled = true;
