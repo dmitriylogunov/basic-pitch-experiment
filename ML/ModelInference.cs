@@ -24,53 +24,99 @@ namespace BasicPitchExperimentApp.ML
         private const float FRAME_THRESHOLD = 0.3f;
         private const int N_FREQ_BINS_NOTES = 88;
         private const int N_FREQ_BINS_CONTOURS = 264;
+        private const int N_OVERLAPPING_FRAMES = 30; // Number of frames to overlap between windows
+        private const int OVERLAP_LENGTH = N_OVERLAPPING_FRAMES * FFT_HOP; // 7680 samples
+        private const int HOP_SIZE = AUDIO_N_SAMPLES - OVERLAP_LENGTH; // 36164 samples
 
         /// <summary>
-        /// Preprocesses audio data to match the expected model input shape
-        /// 
-        /// WHAT THIS FUNCTION DOES:
-        /// - Takes the raw audio samples (numbers representing sound waves)
-        /// - Organizes them into the format the AI model expects
-        /// - The model expects exactly 43,844 samples in shape [1, 43844, 1]
-        /// - Audio longer than 43,844 samples is truncated
-        /// - Audio shorter than 43,844 samples is zero-padded
-        /// - Returns a "tensor" (multi-dimensional array) that the AI can process
-        /// 
-        /// WHY WE NEED THIS:
-        /// - AI models are very picky about input format
-        /// - Like how a recipe needs ingredients in specific amounts and order
-        /// - The model was trained on data in this exact format
-        /// 
-        /// TENSOR CONCEPT:
-        /// - A tensor is like a multi-dimensional spreadsheet
-        /// - Our tensor has shape [1, 43844, 1]
-        /// - 1 = batch size (processing one audio clip at a time)
-        /// - 43844 = exact number of samples the model expects
-        /// - 1 = number of audio channels (mono)
+        /// Processes the entire audio file using sliding windows and returns all detected notes
         /// </summary>
-        /// <param name="audioData">Raw audio samples</param>
-        /// <returns>Tensor containing the preprocessed audio data</returns>
-        public static DenseTensor<float> PreprocessAudio(float[] audioData)
+        /// <param name="session">ONNX inference session</param>
+        /// <param name="audioData">Complete audio data</param>
+        /// <param name="sampleRate">Sample rate of the audio</param>
+        /// <returns>List of all detected notes from the entire audio</returns>
+        public static List<DetectedNote> ProcessFullAudio(InferenceSession session, float[] audioData, int sampleRate)
         {
-            // Basic Pitch expects audio in windows of AUDIO_N_SAMPLES
-            // The model expects shape [1, 43844, 1] - batch, samples, channels
-            Console.WriteLine($"Processing audio with {AUDIO_N_SAMPLES} samples per frame");
-            Console.WriteLine($"Input audio length: {audioData.Length} samples ({audioData.Length / (float)AUDIO_SAMPLE_RATE:F2} seconds)");
+            var allNotes = new List<DetectedNote>();
             
+            // Add padding at the beginning (half of overlap length)
+            int halfOverlap = OVERLAP_LENGTH / 2;
+            var paddedAudio = new float[audioData.Length + halfOverlap];
+            Array.Copy(audioData, 0, paddedAudio, halfOverlap, audioData.Length);
+            
+            // Process audio in sliding windows
+            int windowCount = 0;
+            var allOutputs = new Dictionary<string, List<float[]>>
+            {
+                ["note"] = new List<float[]>(),
+                ["onset"] = new List<float[]>(),
+                ["contour"] = new List<float[]>()
+            };
+            
+            Console.WriteLine($"Processing audio in {AUDIO_N_SAMPLES} sample windows with {HOP_SIZE} sample hops");
+            
+            for (int i = 0; i < paddedAudio.Length; i += HOP_SIZE)
+            {
+                // Extract window
+                var window = new float[AUDIO_N_SAMPLES];
+                for (int j = 0; j < AUDIO_N_SAMPLES; j++)
+                {
+                    if (i + j < paddedAudio.Length)
+                    {
+                        window[j] = paddedAudio[i + j];
+                    }
+                    else
+                    {
+                        window[j] = 0.0f; // Zero-pad if we run out of audio
+                    }
+                }
+                
+                // Preprocess window
+                var windowTensor = PreprocessAudioWindow(window);
+                
+                // Run inference on this window
+                var windowOutputs = RunInference(session, windowTensor);
+                
+                // Store outputs for later unwrapping
+                foreach (var kvp in windowOutputs)
+                {
+                    // Convert tensor to array for storage
+                    var tensor = kvp.Value;
+                    var array = new float[tensor.Length];
+                    tensor.Buffer.Span.CopyTo(array);
+                    allOutputs[kvp.Key].Add(array);
+                }
+                
+                windowCount++;
+                if (windowCount % 10 == 0)
+                {
+                    Console.WriteLine($"  Processed {windowCount} windows...");
+                }
+            }
+            
+            Console.WriteLine($"Total windows processed: {windowCount}");
+            
+            // Unwrap and merge outputs from all windows
+            var mergedOutputs = UnwrapOutputs(allOutputs, audioData.Length, N_OVERLAPPING_FRAMES);
+            
+            // Process the merged outputs to extract notes
+            return ProcessModelOutputs(mergedOutputs, audioData.Length, sampleRate);
+        }
+        
+        /// <summary>
+        /// Preprocesses a single audio window to match the expected model input shape
+        /// </summary>
+        /// <param name="audioWindow">Audio samples for one window</param>
+        /// <returns>Tensor containing the preprocessed audio data</returns>
+        private static DenseTensor<float> PreprocessAudioWindow(float[] audioWindow)
+        {
             // Create tensor with shape [1, 43844, 1]
             var tensor = new DenseTensor<float>(new[] { 1, AUDIO_N_SAMPLES, 1 });
             
             // Fill the tensor with audio data
             for (int i = 0; i < AUDIO_N_SAMPLES; i++)
             {
-                if (i < audioData.Length)
-                {
-                    tensor[0, i, 0] = audioData[i];
-                }
-                else
-                {
-                    tensor[0, i, 0] = 0.0f;
-                }
+                tensor[0, i, 0] = audioWindow[i];
             }
             
             return tensor;
@@ -487,6 +533,83 @@ namespace BasicPitchExperimentApp.ML
             // 440 = frequency of A4 (MIDI note 69)
             // Each semitone is 2^(1/12) times the previous frequency
             return 440.0f * (float)Math.Pow(2.0, (midiNote - 69) / 12.0);
+        }
+        
+        /// <summary>
+        /// Unwraps and merges outputs from multiple overlapping windows
+        /// </summary>
+        /// <param name="allOutputs">Dictionary containing lists of outputs from each window</param>
+        /// <param name="audioOriginalLength">Original audio length in samples</param>
+        /// <param name="nOverlappingFrames">Number of overlapping frames between windows</param>
+        /// <returns>Merged outputs as tensors</returns>
+        private static Dictionary<string, DenseTensor<float>> UnwrapOutputs(
+            Dictionary<string, List<float[]>> allOutputs, 
+            int audioOriginalLength, 
+            int nOverlappingFrames)
+        {
+            var mergedOutputs = new Dictionary<string, DenseTensor<float>>();
+            int nOlap = nOverlappingFrames / 2;
+            
+            foreach (var kvp in allOutputs)
+            {
+                var outputName = kvp.Key;
+                var windowOutputs = kvp.Value;
+                
+                if (windowOutputs.Count == 0) continue;
+                
+                // Determine dimensions from first window
+                int framesPerWindow = 172; // This should match the actual output
+                int numFeatures = outputName == "contour" ? N_FREQ_BINS_CONTOURS : N_FREQ_BINS_NOTES;
+                
+                // Calculate total frames after removing overlaps
+                var processedFrames = new List<float[]>();
+                
+                for (int w = 0; w < windowOutputs.Count; w++)
+                {
+                    var windowData = windowOutputs[w];
+                    int windowFrames = windowData.Length / numFeatures;
+                    
+                    // For each frame in this window
+                    for (int f = 0; f < windowFrames; f++)
+                    {
+                        // Skip overlapping frames at beginning and end (except for first/last windows)
+                        bool skipFrame = false;
+                        if (w > 0 && f < nOlap) skipFrame = true;
+                        if (w < windowOutputs.Count - 1 && f >= windowFrames - nOlap) skipFrame = true;
+                        
+                        if (!skipFrame)
+                        {
+                            // Extract this frame's data
+                            var frameData = new float[numFeatures];
+                            for (int feat = 0; feat < numFeatures; feat++)
+                            {
+                                frameData[feat] = windowData[f * numFeatures + feat];
+                            }
+                            processedFrames.Add(frameData);
+                        }
+                    }
+                }
+                
+                // Calculate expected number of frames for original audio length
+                int nOutputFramesOriginal = (int)Math.Floor(audioOriginalLength * (ANNOTATIONS_FPS / (float)AUDIO_SAMPLE_RATE));
+                
+                // Create merged tensor and copy data
+                int actualFrames = Math.Min(processedFrames.Count, nOutputFramesOriginal);
+                var mergedTensor = new DenseTensor<float>(new[] { actualFrames, numFeatures });
+                
+                for (int f = 0; f < actualFrames; f++)
+                {
+                    for (int feat = 0; feat < numFeatures; feat++)
+                    {
+                        mergedTensor[f, feat] = processedFrames[f][feat];
+                    }
+                }
+                
+                mergedOutputs[outputName] = mergedTensor;
+                Console.WriteLine($"Merged {outputName} output: {actualFrames} frames x {numFeatures} features");
+            }
+            
+            return mergedOutputs;
         }
     }
 }

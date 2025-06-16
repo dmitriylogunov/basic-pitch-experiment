@@ -65,18 +65,10 @@ namespace BasicPitchExperimentApp
                 // Check and normalize audio if needed
                 AudioProcessor.CheckAudioNormalization(audioData);
 
-                // STEP 3: Prepare the audio data for the AI model
-                // The model expects data in a specific format, so we need to convert it
-                Console.WriteLine("Preprocessing audio data...");
-                var spectrogramTensor = ModelInference.PreprocessAudio(audioData);
-                
-                // STEP 4: Ask the AI model to analyze the audio and detect notes
-                Console.WriteLine("Running ONNX model inference...");
-                var modelOutputs = ModelInference.RunInference(session, spectrogramTensor);
-                
-                // STEP 5: Convert the AI model's raw output into understandable note information
-                Console.WriteLine("Processing model outputs...");
-                var detectedNotes = ModelInference.ProcessModelOutputs(modelOutputs, audioData.Length, SAMPLE_RATE);
+                // STEP 3-5: Process the entire audio file using sliding windows
+                // The model processes audio in 2-second windows with overlap
+                Console.WriteLine("Processing audio using sliding windows...");
+                var detectedNotes = ModelInference.ProcessFullAudio(session, audioData, SAMPLE_RATE);
                 
                 // STEP 6: Create a MIDI file from the detected notes
                 // MIDI is a standard format that music software can understand
