@@ -29,7 +29,7 @@ namespace BasicPitchExperimentApp.UI
             canvas = notationCanvas;
         }
         
-        public void RenderNotes(List<DetectedNote> notes)
+        public void RenderNotes(List<DetectedNote> notes, bool guitarNotation = false)
         {
             canvas.Children.Clear();
             
@@ -53,7 +53,13 @@ namespace BasicPitchExperimentApp.UI
             // Draw the notes
             foreach (var note in notes)
             {
-                DrawNote(note);
+                DrawNote(note, guitarNotation);
+            }
+            
+            // Add 8va indication if guitar notation is enabled
+            if (guitarNotation)
+            {
+                DrawOctavaIndication();
             }
         }
         
@@ -142,17 +148,20 @@ namespace BasicPitchExperimentApp.UI
             }
         }
         
-        private void DrawNote(DetectedNote note)
+        private void DrawNote(DetectedNote note, bool guitarNotation = false)
         {
             double x = leftMargin + note.StartTime * pixelsPerSecond;
             double noteWidth = Math.Max(5, (note.EndTime - note.StartTime) * pixelsPerSecond);
             
+            // Adjust MIDI note for guitar notation (display one octave higher)
+            int displayMidiNote = guitarNotation ? note.MidiNote + 12 : note.MidiNote;
+            
             // Determine which staff and position
-            bool isTrebleClef = note.MidiNote >= 60; // Middle C and above
+            bool isTrebleClef = displayMidiNote >= 60; // Middle C and above
             double staffY = isTrebleClef ? topMargin : topMargin + staffHeight;
             
             // Calculate Y position on staff
-            double y = CalculateNoteY(note.MidiNote, staffY, isTrebleClef);
+            double y = CalculateNoteY(displayMidiNote, staffY, isTrebleClef);
             
             // Draw note head
             Ellipse noteHead = new Ellipse
@@ -183,9 +192,9 @@ namespace BasicPitchExperimentApp.UI
             canvas.Children.Add(durationBar);
             
             // Draw ledger lines if needed
-            DrawLedgerLines(x, y, note.MidiNote, staffY, isTrebleClef);
+            DrawLedgerLines(x, y, displayMidiNote, staffY, isTrebleClef);
             
-            // Add note name label
+            // Add note name label (show actual note, not transposed)
             string noteName = NoteUtils.GetNoteName(note.MidiNote);
             TextBlock noteLabel = new TextBlock
             {
@@ -275,6 +284,35 @@ namespace BasicPitchExperimentApp.UI
                 StrokeThickness = 1
             };
             canvas.Children.Add(ledger);
+        }
+        
+        private void DrawOctavaIndication()
+        {
+            // Draw "8va" indication at the beginning of the staff
+            TextBlock octavaText = new TextBlock
+            {
+                Text = "8va",
+                FontSize = 12,
+                FontStyle = FontStyles.Italic,
+                Foreground = Brushes.Black
+            };
+            
+            Canvas.SetLeft(octavaText, leftMargin);
+            Canvas.SetTop(octavaText, topMargin - 20);
+            canvas.Children.Add(octavaText);
+            
+            // Draw dashed line across the top of the treble staff
+            Line octavaLine = new Line
+            {
+                X1 = leftMargin + 25,
+                Y1 = topMargin - 10,
+                X2 = canvas.Width - rightMargin,
+                Y2 = topMargin - 10,
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                StrokeDashArray = new DoubleCollection { 4, 2 }
+            };
+            canvas.Children.Add(octavaLine);
         }
     }
 }

@@ -149,10 +149,7 @@ namespace BasicPitchExperimentApp
                 await GenerateMidiWithCurrentSettings();
                 
                 // Update notation display
-                Dispatcher.Invoke(() =>
-                {
-                    notationRenderer?.RenderNotes(detectedNotes);
-                });
+                UpdateNotationDisplay();
                 
                 RegenerateButton.IsEnabled = true;
                 PlayButton.IsEnabled = true;
@@ -355,6 +352,23 @@ namespace BasicPitchExperimentApp
             
             var selectedItem = (LengthMatchCombo.SelectedItem as ComboBoxItem)?.Content.ToString();
             DurationTextBox.IsEnabled = selectedItem == "Custom (sec)";
+        }
+        
+        private void GuitarNotationCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            UpdateNotationDisplay();
+        }
+        
+        private void UpdateNotationDisplay()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (notationRenderer != null && detectedNotes != null)
+                {
+                    bool guitarNotation = GuitarNotationCheckBox?.IsChecked ?? true;
+                    notationRenderer.RenderNotes(detectedNotes, guitarNotation);
+                }
+            });
         }
 
         private void LogMessage(string message)
