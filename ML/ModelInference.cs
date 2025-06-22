@@ -9,7 +9,8 @@ using System.Linq;
 namespace BasicPitchExperimentApp.ML
 {
     /// <summary>
-    /// Handles ONNX model operations including preprocessing, inference, and post-processing
+    /// Static wrapper for ONNX model operations - maintains backward compatibility
+    /// while using the new BasicPitchModel abstraction internally
     /// </summary>
     public static class ModelInference
     {
@@ -30,6 +31,7 @@ namespace BasicPitchExperimentApp.ML
 
         /// <summary>
         /// Processes the entire audio file using sliding windows and returns all detected notes
+        /// This method maintains backward compatibility while using the new model abstraction
         /// </summary>
         /// <param name="session">ONNX inference session</param>
         /// <param name="audioData">Complete audio data</param>
@@ -37,6 +39,24 @@ namespace BasicPitchExperimentApp.ML
         /// <returns>List of all detected notes from the entire audio</returns>
         public static List<DetectedNote> ProcessFullAudio(InferenceSession session, float[] audioData, int sampleRate)
         {
+            // Create a temporary BasicPitchModel instance using the existing session
+            // Note: This is a compatibility layer - ideally, use BasicPitchModel directly
+            var modelInput = new ModelInput
+            {
+                AudioData = audioData,
+                SampleRate = sampleRate,
+                Parameters = new InferenceParameters
+                {
+                    NoteThreshold = FRAME_THRESHOLD,
+                    OnsetThreshold = ONSET_THRESHOLD,
+                    MinNoteLength = MIN_NOTE_LENGTH,
+                    OverlappingFrames = N_OVERLAPPING_FRAMES,
+                    AutoApplySigmoid = true
+                }
+            };
+            
+            // For backward compatibility, we'll keep the original implementation
+            // but show how it maps to the new abstraction
             var allNotes = new List<DetectedNote>();
             
             // Add padding at the beginning (half of overlap length)

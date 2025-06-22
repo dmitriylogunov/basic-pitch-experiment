@@ -23,6 +23,7 @@ namespace BasicPitchExperimentApp
     {
         private const int SAMPLE_RATE = 22050;
         private InferenceSession? session;
+        private BasicPitchModel? basicPitchModel;
         private float[]? loadedAudioData;
         private string? currentAudioFile;
         private List<DetectedNote>? detectedNotes;
@@ -47,7 +48,13 @@ namespace BasicPitchExperimentApp
                 LogMessage("Loading Basic Pitch model...");
                 await Task.Run(() =>
                 {
-                    session = new InferenceSession("./basic-pitch/basic_pitch/saved_models/icassp_2022/nmp.onnx");
+                    string modelPath = "./basic-pitch/basic_pitch/saved_models/icassp_2022/nmp.onnx";
+                    
+                    // Load using the new abstraction
+                    basicPitchModel = new BasicPitchModel(modelPath);
+                    
+                    // Keep the session for backward compatibility
+                    session = new InferenceSession(modelPath);
                 });
                 LogMessage("Model loaded successfully!");
             }
@@ -92,14 +99,22 @@ namespace BasicPitchExperimentApp
                     loadedAudioData = AudioProcessor.LoadAudioFile(currentAudioFile, SAMPLE_RATE);
                 });
 
-                var audioDuration = loadedAudioData.Length / (float)SAMPLE_RATE;
-                LogMessage($"Audio loaded: {loadedAudioData.Length} samples, {audioDuration:F2} seconds");
-                
-                await Dispatcher.InvokeAsync(() =>
+                if (loadedAudioData != null)
                 {
-                    DurationTextBox.Text = audioDuration.ToString("F2");
-                });
-
+                    var audioDuration = loadedAudioData.Length / (float)SAMPLE_RATE;
+                    LogMessage($"Audio loaded: {loadedAudioData.Length} samples, {audioDuration:F2} seconds");
+                    
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        DurationTextBox.Text = audioDuration.ToString("F2");
+                    });
+                }
+                else
+                {
+                    LogMessage("Failed to load audio data");
+                    return;
+                }
+                
                 await ProcessAudioWithCurrentSettings();
             }
             catch (Exception ex)
@@ -116,7 +131,7 @@ namespace BasicPitchExperimentApp
 
         private async Task ProcessAudioWithCurrentSettings()
         {
-            if (loadedAudioData == null || session == null) return;
+            if (loadedAudioData == null || (session == null && basicPitchModel == null)) return;
 
             try
             {
@@ -139,11 +154,39 @@ namespace BasicPitchExperimentApp
 
                 await Task.Run(() =>
                 {
-                    // Process with custom parameters
-                    detectedNotes = ProcessFullAudioWithParams(session, loadedAudioData, SAMPLE_RATE, modelParams);
+                    // Use the new abstraction if available
+                    if (basicPitchModel != null)
+                    {
+                        var modelInput = new ModelInput
+                        {
+                            AudioData = loadedAudioData,
+                            SampleRate = SAMPLE_RATE,
+                            Parameters = new InferenceParameters
+                            {
+                                NoteThreshold = modelParams.NoteThreshold,
+                                OnsetThreshold = modelParams.OnsetThreshold,
+                                MinNoteLength = modelParams.MinNoteLength,
+                                OverlappingFrames = 30,
+                                AutoApplySigmoid = true
+                            }
+                        };
+                        
+                        var modelOutput = basicPitchModel.ProcessAudio(modelInput);
+                        detectedNotes = modelOutput.Notes;
+                        
+                        // Log statistics
+                        LogMessage($"Processing stats - Windows: {modelOutput.Statistics.WindowsProcessed}, " +
+                                 $"Time: {modelOutput.Statistics.ProcessingTimeMs}ms, " +
+                                 $"Sigmoid applied: {modelOutput.Statistics.SigmoidApplied}");
+                    }
+                    else if (session != null)
+                    {
+                        // Fallback to old method
+                        detectedNotes = ProcessFullAudioWithParams(session, loadedAudioData, SAMPLE_RATE, modelParams);
+                    }
                 });
 
-                LogMessage($"Detected {detectedNotes.Count} notes");
+                LogMessage($"Detected {detectedNotes?.Count ?? 0} notes");
 
                 // Generate MIDI with current settings
                 await GenerateMidiWithCurrentSettings();
@@ -384,6 +427,7 @@ namespace BasicPitchExperimentApp
         {
             base.OnClosed(e);
             StopPlayback();
+            basicPitchModel?.Dispose();
             session?.Dispose();
             MediaFoundationApi.Shutdown();
         }
