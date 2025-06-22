@@ -143,6 +143,7 @@ namespace BasicPitchExperimentApp
                 var minNoteDuration = (float)(MinNoteDurationSlider.Value / 1000.0); // Convert ms to seconds
                 
                 LogMessage($"Using thresholds - Note: {noteThreshold:F2}, Onset: {onsetThreshold:F2}, Min Duration: {minNoteDuration:F3}s");
+                LogMessage("Onset-based note splitting: Enabled (splits consecutive same notes)");
 
                 // Create modified inference parameters
                 var modelParams = new ModelParameters
@@ -167,7 +168,9 @@ namespace BasicPitchExperimentApp
                                 OnsetThreshold = modelParams.OnsetThreshold,
                                 MinNoteLength = modelParams.MinNoteLength,
                                 OverlappingFrames = 30,
-                                AutoApplySigmoid = true
+                                AutoApplySigmoid = true,
+                                UseOnsetForNoteSplitting = true,
+                                MinFramesBetweenOnsets = 3
                             }
                         };
                         

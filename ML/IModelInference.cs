@@ -66,6 +66,16 @@ namespace BasicPitchExperimentApp.ML
         /// Whether to apply sigmoid transformation to raw model outputs
         /// </summary>
         public bool AutoApplySigmoid { get; set; } = true;
+
+        /// <summary>
+        /// Whether to use onset detection to split consecutive same notes
+        /// </summary>
+        public bool UseOnsetForNoteSplitting { get; set; } = true;
+
+        /// <summary>
+        /// Minimum frames between notes for onset-based splitting
+        /// </summary>
+        public int MinFramesBetweenOnsets { get; set; } = 3;
     }
 
     /// <summary>

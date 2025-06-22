@@ -443,8 +443,9 @@ namespace BasicPitchExperimentApp.ML
             for (int pitch = 0; pitch < PIANO_KEYS; pitch++)
             {
                 var activations = new List<(int frame, float activation)>();
+                var onsets = new List<(int frame, float onset)>();
                 
-                // Find frames where this pitch is active
+                // Find frames where this pitch is active and detect onsets
                 for (int frame = 0; frame < mergedResults.FrameCount; frame++)
                 {
                     float activation = mergedResults.NoteActivations[frame, pitch];
@@ -453,10 +454,27 @@ namespace BasicPitchExperimentApp.ML
                         activations.Add((frame, activation));
                         mergedResults.DetectionsAboveThreshold++;
                     }
+                    
+                    // Collect onset information if available
+                    if (mergedResults.OnsetActivations != null && mergedResults.OnsetActivations.GetLength(0) > frame)
+                    {
+                        float onset = mergedResults.OnsetActivations[frame, pitch];
+                        if (onset > parameters.OnsetThreshold)
+                        {
+                            onsets.Add((frame, onset));
+                        }
+                    }
                 }
                 
-                // Group consecutive activations
-                var segments = GroupConsecutiveActivations(activations);
+                // Group consecutive activations, considering onsets for segmentation
+                var segments = GroupConsecutiveActivationsWithOnsets(activations, onsets, parameters);
+                
+                // Log onset usage for debugging
+                if (onsets.Count > 0 && segments.Count > 1)
+                {
+                    int midiNote = 21 + pitch;
+                    Console.WriteLine($"Note {GetNoteName(midiNote)} (MIDI {midiNote}): {onsets.Count} onsets detected, {segments.Count} segments created");
+                }
                 
                 // Convert segments to notes
                 foreach (var segment in segments)
@@ -484,6 +502,74 @@ namespace BasicPitchExperimentApp.ML
             // Sort by start time
             notes.Sort((a, b) => a.StartTime.CompareTo(b.StartTime));
             return notes;
+        }
+
+        private List<(int startFrame, int endFrame, float avgConfidence)> GroupConsecutiveActivationsWithOnsets(
+            List<(int frame, float activation)> activations,
+            List<(int frame, float onset)> onsets,
+            InferenceParameters parameters)
+        {
+            if (activations.Count == 0)
+                return new List<(int, int, float)>();
+            
+            var segments = new List<(int startFrame, int endFrame, float avgConfidence)>();
+            int currentStart = activations[0].frame;
+            int currentEnd = activations[0].frame;
+            float confidenceSum = activations[0].activation;
+            int confidenceCount = 1;
+            
+            // Create a HashSet of onset frames for quick lookup
+            var onsetFrames = new HashSet<int>(onsets.Select(o => o.frame));
+            
+            for (int i = 1; i < activations.Count; i++)
+            {
+                bool shouldSplit = false;
+                
+                // Check if there's a gap in activation
+                if (activations[i].frame != currentEnd + 1)
+                {
+                    shouldSplit = true;
+                }
+                // Check if there's an onset within the continuous activation
+                else if (parameters.UseOnsetForNoteSplitting && onsetFrames.Count > 0)
+                {
+                    // Look for onsets between the current segment start and this frame
+                    // Allow a small window around the onset for timing variations
+                    for (int checkFrame = currentEnd; checkFrame <= activations[i].frame + 2; checkFrame++)
+                    {
+                        if (onsetFrames.Contains(checkFrame) && checkFrame > currentStart + parameters.MinFramesBetweenOnsets)
+                        {
+                            // Found an onset within continuous activation, split here
+                            shouldSplit = true;
+                            Console.WriteLine($"Splitting note at onset frame {checkFrame} (segment started at {currentStart})");
+                            break;
+                        }
+                    }
+                }
+                
+                if (shouldSplit)
+                {
+                    // End current segment
+                    segments.Add((currentStart, currentEnd, confidenceSum / confidenceCount));
+                    
+                    // Start new segment
+                    currentStart = activations[i].frame;
+                    currentEnd = activations[i].frame;
+                    confidenceSum = activations[i].activation;
+                    confidenceCount = 1;
+                }
+                else
+                {
+                    // Continue current segment
+                    currentEnd = activations[i].frame;
+                    confidenceSum += activations[i].activation;
+                    confidenceCount++;
+                }
+            }
+            
+            // Add final segment
+            segments.Add((currentStart, currentEnd, confidenceSum / confidenceCount));
+            return segments;
         }
 
         private List<(int startFrame, int endFrame, float avgConfidence)> GroupConsecutiveActivations(
@@ -527,6 +613,14 @@ namespace BasicPitchExperimentApp.ML
         private static float MidiNoteToFrequency(int midiNote)
         {
             return 440.0f * (float)Math.Pow(2.0, (midiNote - 69) / 12.0);
+        }
+        
+        private static string GetNoteName(int midiNote)
+        {
+            string[] noteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+            int octave = (midiNote / 12) - 1;
+            int noteIndex = midiNote % 12;
+            return $"{noteNames[noteIndex]}{octave}";
         }
 
         private static void UpdateStatistics(MergedResults merged, float value)
