@@ -30,6 +30,7 @@ namespace BasicPitchExperimentApp
         private IWavePlayer? wavePlayer;
         private string? currentMidiFile = "output.mid";
         private MusicNotationRenderer? notationRenderer;
+        private int detectedTempo = 120; // Stores the tempo detected from the audio
 
         public MainWindow()
         {
@@ -39,6 +40,15 @@ namespace BasicPitchExperimentApp
             
             LengthMatchCombo.SelectionChanged += LengthMatchCombo_SelectionChanged;
             notationRenderer = new MusicNotationRenderer(NotationCanvas);
+            
+            // Uncheck "Use Detected" when user manually edits BPM
+            BpmTextBox.TextChanged += (s, e) => 
+            {
+                if (BpmTextBox.IsFocused)
+                {
+                    UseDetectedTempoCheckBox.IsChecked = false;
+                }
+            };
         }
 
         private async void LoadModel()
@@ -176,11 +186,19 @@ namespace BasicPitchExperimentApp
                         
                         var modelOutput = basicPitchModel.ProcessAudio(modelInput);
                         detectedNotes = modelOutput.Notes;
+                        detectedTempo = modelOutput.DetectedTempo;
                         
                         // Log statistics
                         LogMessage($"Processing stats - Windows: {modelOutput.Statistics.WindowsProcessed}, " +
                                  $"Time: {modelOutput.Statistics.ProcessingTimeMs}ms, " +
                                  $"Sigmoid applied: {modelOutput.Statistics.SigmoidApplied}");
+                        
+                        // Update BPM text box with detected tempo
+                        Dispatcher.Invoke(() => 
+                        {
+                            BpmTextBox.Text = detectedTempo.ToString();
+                            LogMessage($"Detected tempo: {detectedTempo} BPM");
+                        });
                     }
                     else if (session != null)
                     {
@@ -216,7 +234,12 @@ namespace BasicPitchExperimentApp
             {
                 // Get BPM setting
                 int bpm = 120;
-                if (int.TryParse(BpmTextBox.Text, out int parsedBpm) && parsedBpm > 0)
+                if (UseDetectedTempoCheckBox.IsChecked == true && detectedTempo > 0)
+                {
+                    bpm = detectedTempo;
+                    LogMessage($"Using detected tempo: {bpm} BPM");
+                }
+                else if (int.TryParse(BpmTextBox.Text, out int parsedBpm) && parsedBpm > 0)
                 {
                     bpm = parsedBpm;
                 }

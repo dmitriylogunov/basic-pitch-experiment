@@ -35,7 +35,8 @@
             <Grid Margin="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="120"/>
                     <ColumnDefinition Width="Auto"/>
@@ -44,16 +45,19 @@
                 
                 <Label Grid.Column="0" Content="BPM:" VerticalAlignment="Center"/>
                 <TextBox x:Name="BpmTextBox" Grid.Column="1" Text="120" VerticalAlignment="Center" Margin="5,0"/>
+                <CheckBox x:Name="UseDetectedTempoCheckBox" Grid.Column="2" Content="Use Detected" 
+                          VerticalAlignment="Center" Margin="5,0" IsChecked="True"
+                          ToolTip="Use tempo detected from the audio"/>
                 
-                <Label Grid.Column="2" Content="Length Match:" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                <ComboBox x:Name="LengthMatchCombo" Grid.Column="3" VerticalAlignment="Center" Margin="5,0" SelectedIndex="0">
+                <Label Grid.Column="3" Content="Length Match:" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <ComboBox x:Name="LengthMatchCombo" Grid.Column="4" VerticalAlignment="Center" Margin="5,0" SelectedIndex="0">
                     <ComboBoxItem>Original</ComboBoxItem>
                     <ComboBoxItem>Custom (sec)</ComboBoxItem>
                     <ComboBoxItem>Stretch to BPM</ComboBoxItem>
                 </ComboBox>
                 
-                <Label Grid.Column="4" Content="Duration (sec):" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                <TextBox x:Name="DurationTextBox" Grid.Column="5" Text="0" VerticalAlignment="Center" Margin="5,0" IsEnabled="False"/>
+                <Label Grid.Column="5" Content="Duration (sec):" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <TextBox x:Name="DurationTextBox" Grid.Column="6" Text="0" VerticalAlignment="Center" Margin="5,0" IsEnabled="False"/>
             </Grid>
         </GroupBox>
 

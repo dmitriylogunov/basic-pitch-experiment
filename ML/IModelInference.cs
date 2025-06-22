@@ -114,6 +114,11 @@ namespace BasicPitchExperimentApp.ML
         public float FrameRate { get; set; }
 
         /// <summary>
+        /// Detected tempo in BPM (beats per minute)
+        /// </summary>
+        public int DetectedTempo { get; set; } = 120;
+
+        /// <summary>
         /// Statistics about the inference process
         /// </summary>
         public InferenceStatistics Statistics { get; set; } = new InferenceStatistics();

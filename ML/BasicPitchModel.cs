@@ -98,6 +98,10 @@ namespace BasicPitchExperimentApp.ML
             output.Statistics.DetectionsAboveThreshold = mergedResults.DetectionsAboveThreshold;
                 output.Statistics.ProcessingTimeMs = stopwatch.ElapsedMilliseconds;
 
+                // Detect tempo from note onsets
+                output.DetectedTempo = DetectTempo(output.Notes);
+                Console.WriteLine($"Detected tempo: {output.DetectedTempo} BPM");
+
                 return output;
             }
             catch (Exception ex)
@@ -629,6 +633,78 @@ namespace BasicPitchExperimentApp.ML
             if (value < merged.MinActivation) merged.MinActivation = value;
             merged.ActivationSum += value;
             merged.ActivationCount++;
+        }
+
+        private static int DetectTempo(List<DetectedNote> notes)
+        {
+            if (notes.Count < 2)
+                return 120; // Default tempo
+            
+            // Get all note onset times
+            var onsetTimes = notes.Select(n => n.StartTime).OrderBy(t => t).ToList();
+            
+            // Calculate intervals between consecutive onsets
+            var intervals = new List<float>();
+            for (int i = 1; i < onsetTimes.Count; i++)
+            {
+                float interval = onsetTimes[i] - onsetTimes[i - 1];
+                if (interval > 0.05f && interval < 2.0f) // Filter out very short or very long intervals
+                {
+                    intervals.Add(interval);
+                }
+            }
+            
+            if (intervals.Count == 0)
+                return 120;
+            
+            // Find common beat intervals using histogram approach
+            var beatCandidates = new Dictionary<int, int>(); // BPM -> count
+            
+            foreach (var interval in intervals)
+            {
+                // Test various beat divisions (quarter, eighth, sixteenth notes)
+                for (int division = 1; division <= 4; division *= 2)
+                {
+                    float beatInterval = interval * division;
+                    int bpm = (int)Math.Round(60.0f / beatInterval);
+                    
+                    // Only consider reasonable tempo range
+                    if (bpm >= 40 && bpm <= 200)
+                    {
+                        // Allow some tolerance for tempo variations
+                        for (int offset = -2; offset <= 2; offset++)
+                        {
+                            int candidateBpm = bpm + offset;
+                            if (candidateBpm >= 40 && candidateBpm <= 200)
+                            {
+                                if (!beatCandidates.ContainsKey(candidateBpm))
+                                    beatCandidates[candidateBpm] = 0;
+                                beatCandidates[candidateBpm]++;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Find the most common BPM
+            if (beatCandidates.Count == 0)
+                return 120;
+            
+            var detectedBpm = beatCandidates.OrderByDescending(kvp => kvp.Value).First().Key;
+            
+            // Prefer common tempos if they're close
+            int[] commonTempos = { 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160 };
+            foreach (var commonTempo in commonTempos)
+            {
+                if (Math.Abs(detectedBpm - commonTempo) <= 3)
+                {
+                    Console.WriteLine($"Tempo detection: {detectedBpm} BPM -> snapped to common tempo {commonTempo} BPM");
+                    return commonTempo;
+                }
+            }
+            
+            Console.WriteLine($"Tempo detection: {detectedBpm} BPM (confidence: {beatCandidates[detectedBpm]} votes)");
+            return detectedBpm;
         }
 
         public void Dispose()
