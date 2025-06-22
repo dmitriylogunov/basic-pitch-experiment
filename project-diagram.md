@@ -191,25 +191,25 @@ classDiagram
     ModelOutput --> DetectedNote : contains
 ```
 
-## Error Flow (Current Issue)
+## Index Calculation Flow
 
 ```mermaid
 graph LR
     A[Audio Data<br/>573120 samples] --> B[ProcessAudioWindows]
     B --> C{Calculate Indices}
-    C -->|Overflow| D[Arithmetic Overflow<br/>Error]
     
-    subgraph "Index Calculation Issue"
+    subgraph "Index Calculation"
         E[frame * keysPerFrame + key]
         F[Flattened 1D Array]
-        G[Need correct dimensions<br/>from tensor]
+        G[Uses tensor dimensions<br/>for correct indexing]
     end
     
     C --> E
     E --> F
     F --> G
+    G --> H[Successfully merged<br/>window results]
     
-    style D fill:#f99,stroke:#333,stroke-width:2px
+    style H fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
 ## Processing Parameters
@@ -257,8 +257,9 @@ graph TD
     style Model fill:#99f,stroke:#333,stroke-width:2px
 ```
 
-## Notes
+## Technical Notes
 
-1. **Current Issue**: Arithmetic overflow when calculating array indices in `MergeWindowResults`
-2. **Root Cause**: Tensor dimensions are flattened to 1D arrays, need proper index calculation
-3. **Solution**: Use correct dimensions from tensor output for index calculations
+1. **Window Processing**: Audio is processed in ~2 second windows with 30-frame overlap
+2. **Tensor Handling**: 3D tensors from ONNX are flattened to 1D arrays for processing
+3. **Index Calculation**: Uses formula `frame * keysPerFrame + key` to access flattened data
+4. **Model Output**: Generates piano roll representation with 88 keys and pitch contour with 264 frequency bins
